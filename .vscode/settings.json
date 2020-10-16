@@ -1,0 +1,12 @@
+{
+  "cSpell.words": [
+    "enform"
+  ],
+  "ocaml.sandbox": {
+    "kind": "global"
+  },
+  "cSpell.ignoreWords": [
+    "maelvalais",
+    "printf"
+  ]
+}

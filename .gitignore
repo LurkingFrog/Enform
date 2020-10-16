@@ -1,0 +1,8 @@
+# Build artifacts created by dune
+_build
+
+# Installation info from esy
+_esy
+
+# Installed Javascript modules from npm
+node_modules

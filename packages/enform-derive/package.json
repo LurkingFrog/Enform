@@ -1,0 +1,23 @@
+{
+  "name": "enform-derive",
+  "version": "0.1.0",
+  "description": "Derive boilerplate code used by Enform",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LurkingFrog/Enform.git"
+  },
+  "keywords": [
+    "ppx",
+    "ReasonML",
+    "forms",
+    "derive",
+    "validation",
+    "react"
+  ],
+  "author": "dfogelson@landfillinc.com",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/LurkingFrog/Enform/issues"
+  },
+  "homepage": "https://github.com/LurkingFrog/Enform#readme"
+}

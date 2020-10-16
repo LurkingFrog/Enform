@@ -35,5 +35,5 @@ This isn't published, but shows the intended use cases for the tools.
 
 ## The book
 
-I like the style that Rust has of making a book on using a library in addition to the straight API documentation.
-Again, this is going to be a TODO, waiting for when I stabilize the API in this project
+I like the style that Rust has of making a book on using a library in addition to the straight API
+documentation. Again, this is going to be a TODO, waiting for when I stabilize the API in this project.

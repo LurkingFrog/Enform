@@ -1,6 +1,9 @@
 # Build artifacts created by dune
 _build
 
+# Ignore the built book
+_book
+
 # Installation info from esy
 _esy
 

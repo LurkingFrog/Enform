@@ -86,13 +86,15 @@ I will refer to the root folder of this project as **WORKDIR**
    ```
 
 4. Create an esy.json file for the full project in **WORKDIR**
+
    ```json
 
    ```
+
 5. For each package, do steps 5-
 6. Create an package.json with the command ```npm init```
    This is primarily a placeholder as we are going to be using esy.json for most of the management functions
-6.
+7.
 
 After completing all the initialization, your directory structure should look like this:
 

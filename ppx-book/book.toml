@@ -1,0 +1,21 @@
+[book]
+title = "Building a PPX Project"
+author = "Dave Fogelson"
+description = "How to get started with a new PPX Project"
+
+[rust]
+edition = "2018"
+
+[build]
+build-dir = "_book"
+create-missing = false
+
+[preprocessor.index]
+
+[preprocessor.links]
+
+[output.html]
+additional-css = []
+
+[output.html.search]
+limit-results = 15

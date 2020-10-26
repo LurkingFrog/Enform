@@ -1,7 +1,5 @@
 # Summary
 
-
-
 - [Why the book](./WhyPPX.md)
 - [TL;DR: Code only walkthrough](./CommandWalkthrough.md)
 - [Setting up the environment](./Environment/README.md)

@@ -6,3 +6,6 @@ types that the more complicated records can use.
 
 In addition, separating this from the derive allows users to code their own custom implementations when the
 derive doesn't work.
+
+## Setup
+

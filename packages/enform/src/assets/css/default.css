@@ -1,0 +1,13 @@
+/* Default styles that can be used on input items */
+
+/* Load the tailwind.css code */
+/* @import "tailwind/base"; */
+/* @import "tailwind/components"; */
+/* @import "tailwind/utilities"; */
+
+.sidebar {
+  width: 300px;
+  float: left;
+  position: relative;
+  z-index: 3;
+}

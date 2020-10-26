@@ -1,0 +1,39 @@
+.app-sidebar {
+  width: 280px;
+  display: flex;
+  z-index: 11;
+  overflow: hidden;
+  min-width: 280px;
+  position: relative;
+  flex: 0 0 280px;
+  margin-top: -60px;
+  padding-top: 60px;
+  transition: all 0.2s;
+}
+.app-sidebar .app-sidebar__inner {
+  padding: 2px 1.5rem 1.5rem;
+}
+.app-sidebar .scrollbar-container {
+  z-index: 15;
+  width: 100%;
+}
+.app-sidebar .app-sidebar-bg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 100%;
+  opacity: 0.05;
+  background-size: cover;
+  z-index: 10;
+}
+.app-sidebar .app-header__logo {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: none;
+  z-index: 11;
+}
+.app-sidebar.sidebar-shadow {
+  box-shadow: 7px 0 60px rgba(0, 0, 0, 0.05);
+}

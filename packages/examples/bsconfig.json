@@ -1,0 +1,38 @@
+{
+  "name": "enform-examples",
+  "reason": {
+    "react-jsx": 3
+  },
+  "sources": {
+    "dir": "src",
+    "subdirs": true,
+    "generators": [
+      {
+        "name": "gen-tailwind",
+        "edge": ["assets/css/tailwind.css", ":", "assets/css/main.css"]
+      }
+    ]
+  },
+  "generators": [
+    {
+      "name": "gen-tailwind",
+      "command": "tailwindcss build $in -o $out"
+    }
+  ],
+  "bsc-flags": ["-bs-super-errors", "-bs-no-version-header"],
+  "package-specs": [
+    {
+      "module": "commonjs",
+      "in-source": true
+    }
+  ],
+  "suffix": ".bs.js",
+  "namespace": true,
+  "bs-dependencies": ["bs-webapi", "reason-react", "reason-uuid", "reductive", "enform"],
+  "refmt": 3,
+  "ppx-flags": [["@dylanirlbeck/tailwind-ppx/bin/tailwind-ppx", "-path src/assets/css/tailwind.css"]],
+  "warnings": {
+    "number": "+A-42-48-4",
+    "error": "+A-3-44-102-103"
+  }
+}

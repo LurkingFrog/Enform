@@ -1,0 +1,27 @@
+{
+  "name": "enform",
+  "reason": {
+    "react-jsx": 3
+  },
+  "sources": {
+    "dir": "src",
+    "subdirs": true
+  },
+  "bsc-flags": ["-bs-super-errors", "-bs-no-version-header"],
+  "package-specs": [
+    {
+      "module": "commonjs",
+      "in-source": true
+    }
+  ],
+  "suffix": ".bs.js",
+  "namespace": true,
+  // Don't forget to readd eeyo.re
+  "bs-dependencies": ["bs-webapi", "reason-react", "reason-uuid", "reductive"],
+  "refmt": 3,
+  "ppx-flags": []
+  // "warnings": {
+  // "number": "+A-42-48-4",
+  // "error": "+A-3-44-102-103"
+  // }
+}

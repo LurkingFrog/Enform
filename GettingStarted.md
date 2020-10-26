@@ -17,7 +17,7 @@ I'm also using the Reason syntax instead of ReScript because the tooling is not 
 This is being written based on my [current environment](https://github.com/LurkingFrog/dots) built in an Ubuntu
 20.04.1 LTS (Focal Fossa) virtual machine. This is a subset of tools that I use.
 
-I'm writing this because I always get killed when I find a "project template" which doesn't quite work and I
+I'm writing this because I always get iklled when I find a "project template" which doesn't quite work and I
 have to figure out everything just to make the one change I need.
 
 1. Install m4 (required by esy for building a OCaml compiler) ```sudo apt install -y m4```

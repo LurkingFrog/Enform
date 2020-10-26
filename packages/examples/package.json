@@ -1,0 +1,42 @@
+{
+  "name": "enform-example",
+  "version": "0.1.0",
+  "keywords": [
+    "BuckleScript",
+    "ReasonReact",
+    "reason-react"
+  ],
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "doc": "esy dune build @doc",
+    "build": "bsb -make-world",
+    "start": "bsb -make-world -w < /dev/zero",
+    "clean": "bsb -clean-world",
+    "webpack": "webpack -w",
+    "webpack:production": "NODE_ENV=production webpack",
+    "server": "webpack-dev-server --config dev.webpack.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "bs-webapi": "0.19.1",
+    "reason-react": ">=0.9.1",
+    "reductive": "^2.1.1",
+    "reason-uuid": "1.0.0",
+    "react": "^17.0.1",
+    "react-dom": "^17.0.1"
+  },
+  "devDependencies": {
+    "@dylanirlbeck/tailwind-ppx": "^0.8.3",
+    "bs-platform": "^8.3.1",
+    "css-loader": "^5.0.0",
+    "extract-css-chunks-webpack-plugin": "^4.7.5",
+    "file-loader": "^6.1.1",
+    "html-webpack-plugin": "^4.5.0",
+    "style-loader": "^2.0.0",
+    "tailwindcss": "^1.9.5",
+    "webpack": "^5.2.0",
+    "webpack-cli": "3.3.12",
+    "webpack-dev-server": "^3.11.0"
+  }
+}

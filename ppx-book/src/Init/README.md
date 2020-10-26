@@ -11,3 +11,15 @@ of all the pieces in production.
 This may seem like a lot of extra work, but in the end it can produce significant savings in both effort and
 heartache. Once the skeleton is done, each time you commit a new patch you can be assured that it can all
 be deployed if desired.
+
+
+## Terminology
+
+Throughout this book, I'll be using some terms/variables:
+
+- **$WORKDIR** This is the root directory of the workspace. On the command line, we can set it with the
+  export command so copy/paste from this document will work
+- **repo** The source controlled portion of the workspace
+- **workspace** The root of the build tree
+- **project** A set of one or more packages within a workspace
+- **package** An set of code which compiles to a single executable/library

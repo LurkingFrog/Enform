@@ -1,16 +1,25 @@
-/** Some common shortcuts and aliases used throughout the software */;
+/** Some common shortcuts and aliases used throughout the software
+ *
+ * These are not specific to any specific module or type defined in this package
+ */;
 
-// To fix this random compilation issue, I included this module
-// open Eeyore
+open Eeyore;
 
-/** Re-export Eeyo's Kleisli Composition */
+// Re-export Eeyo's functions
 let ok = Eeyo.ok;
 let err = Eeyo.err;
 let kC = Eeyo.kC;
+let flattenExn = Eeyo.flattenExn;
 let getExn = Eeyo.getExn;
+let mapErr = Eeyo.mapErr;
+// End Re-export
 
-/** Re-export sprintf */
-let sprintf = Printf.sprintf;
+module Result = {
+  type t('a) = Belt.Result.t('a, Eeyo.t(Errors.t));
+};
+
+/** Re-export srpintf as format */
+let format = x => Printf.sprintf(x);
 
 /** Convert None to a NotFound error.
  *
@@ -66,7 +75,7 @@ module HM = {
     |> mapNone(
          ~msg=
            notFound->Belt.Option.getWithDefault(
-             sprintf("Item with key '%s' was not found in the hash map", key),
+             format("Item with key '%s' was not found in the hash map", key),
            ),
          ~level=
            switch (notFound) {
@@ -83,7 +92,7 @@ module HM = {
     |> mapSome(
          ~msg=
            dupError->Belt.Option.getWithDefault(
-             sprintf("Item with key '%s' already exists in the hash map", key),
+             format("Item with key '%s' already exists in the hash map", key),
            ),
          ~level=
            switch (dupError) {
@@ -99,7 +108,7 @@ module HM = {
   };
 
   /** Update a HashMap item in place */
-  let update = (~notFound=None, hashMap, key, func) => {
+  let update = (~notFound=None, key, func, hashMap) => {
     find(~notFound, hashMap, key)
     |> kC(func)
     |> kC(item => {
@@ -107,6 +116,16 @@ module HM = {
          ok(hashMap);
        });
   };
+
+  /** Ensure a list of keys is exists within a hashmap */
+  let contains = (~keysNotFoundMsg, keys, hashMap) =>
+    keys
+    |> Array.to_list
+    |> List.map(key =>
+         Belt.HashMap.String.get(hashMap, key)
+         |> mapNone(~msg=format("Key '%s' not found", key), Errors.NotFound)
+       )
+    |> flattenExn(~groupErrorMsg=keysNotFoundMsg);
 };
 
 /** Get the last value in an array
@@ -126,4 +145,10 @@ let last = arr => {
 
 let back = () => {
   Webapi.Dom.(History.(back(history)));
+};
+
+/** A way to add extra props that are used by external javascript modules */
+module WithProps = {
+  [@react.component]
+  let make = (~props, ~children) => React.cloneElement(children, props);
 };

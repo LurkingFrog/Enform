@@ -7,6 +7,8 @@
 type t =
   | /** A catchall for errors that aren't explicitly listed */
     General
+  | /** The value is not valid in the given context */
+    BadValue
   | /** Tried to update a second value with the same unique identifier */
     DuplicateKey
   | /** This operation cannot run on the given enumerated type */

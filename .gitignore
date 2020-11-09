@@ -23,3 +23,6 @@ node_modules
 
 # This is my hack because npm link tends to corrupt on me. esy may fix it, but I haven't figured out how yet
 **/External
+
+# VSCode - No reason to keep this, as it's a temporary fix for what I'm working on now
+workspace.code-workspace

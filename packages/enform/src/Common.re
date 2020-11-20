@@ -1,5 +1,7 @@
 /** This defines the behavior of the field/group/form. If nested, the most specific handler wins */
+open Helpers;
 
+/** Holds a general status of the associated Field/Group */
 type state =
   | /** The item is empty, but the user has not had an opportunity to modify it */
     New
@@ -28,7 +30,8 @@ module EventHandlers = {
 };
 
 type t = {
-  name: string,
+  guid: string,
+  label: option(string),
   state,
   /** A guid list of the groups that this item belongs to. */
   memberOf: array(string),
@@ -41,4 +44,5 @@ type t = {
 };
 
 /** Create a default component configuration */
-let newCommon = name => {name, state: New, memberOf: [|"__root"|], eventHandlers: EventHandlers.default()};
+let newCommonConfig = (~label=?, guid) =>
+  ok({guid, label, state: New, memberOf: [|rootGroupId|], eventHandlers: EventHandlers.default()});

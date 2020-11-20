@@ -1,5 +1,7 @@
 /** The main module to tie everything together
  *
+ * Functions that add an additional layer of validation between the user and the internals of this library.
+ *
  * Style wise, I'm making this the public interface so internal relationships can be maintained by the code
  * and not by the end user.  In addition, this is the standard method of avoiding side effects in functional/
  * immutable coding.
@@ -10,43 +12,125 @@ open Helpers;
 
 let newForm = Form.newForm;
 
-// Group Management
+let newConfig = Common.newCommonConfig;
 
-let getGroup = (form: Form.t, groupId) => {
-  HM.find(
-    ~notFound=Some(format("Could not find group with id '%s' in form '%s'", groupId, form.guid)),
-    form.members,
-    groupId,
-  )
-  |> kC(group =>
-       switch (group) {
-       | Form.Member.Group(x) => ok(x)
-       | Form.Member.Field(_) =>
-         err(~msg=format("Id '%s' belongs to a field and not a group", groupId), Errors.BadValue)
-       }
-     );
+// Field Management
+/** Add a set of fields to an existing form in ordered fashion */
+let addFields = (form: Form.t) => {
+  Array.fold_left((acc, field) => acc |> kC(Form.addField(field)), ok(form));
 };
 
-let getField = (form: Form.t, fieldId) => {
-  HM.find(
-    ~notFound=Some(format("Could not find field with id '%s' in form '%s'", fieldId, form.guid)),
-    form.members,
-    fieldId,
+let upsertMembers = (form: Form.t) => {
+  Array.fold_left(
+    (acc, field: Field.t) =>
+      acc
+      |> kC((acc: Form.t) => {
+           Belt.HashMap.String.set(acc.members, field.guid, Form.Member.Field(field));
+           ok(acc);
+         }),
+    ok(form),
   );
 };
 
+// Group Management
+/** Create and add a new Selector group to a form
+ *
+ * NOTE: This API is assuming that we are creating the whole form in one spot, so we pass in full members
+ *       instead of guids.
+*/
+module AddSelectorGroup = {
+  /** The variables used in the kleisli chain */
+  type params = {
+    form: Form.t,
+    root: Group.t,
+    members: array(Form.Member.t),
+    parent: Form.Member.t,
+    newGroup: Group.t,
+  };
+
+  let getForm = params => ok(params.form);
+
+  let members = (~selector, ~fields, ~subGroups) =>
+    ok(
+      Belt.Array.concatMany([|
+        [|Form.Member.Field(selector)|],
+        fields->Belt.Option.getWithDefault([||]) |> Array.map(x => Form.Member.Field(x)),
+        subGroups->Belt.Option.getWithDefault([||]) |> Array.map(x => Form.Member.Group(x)),
+      |]),
+    );
+
+  let getParent = (form, parentId) => {
+    switch (parentId |> Form.getMember(form)) {
+    | Ok(Form.Member.Field(_)) =>
+      err(~msg="A member parent must be a Group or a List, not a Field", Errors.BadValue)
+    | Ok(x) => ok(x)
+    | Error(_) =>
+      err(
+        ~msg=
+          format(
+            "Could not find a member in form '%s' with id '%s' to act as the parent of the new select group",
+            form.guid,
+            parentId,
+          ),
+        Errors.NotFound,
+      )
+    };
+  };
+
+  let makeGroup = (~parent, ~selector, ~members, guid) => {
+    Group.newSelectorGroup(
+      ~parentId=parent |> Form.Member.getId,
+      ~memberIds=members |> Array.map(Form.Member.getId),
+      ~selectorId=selector |> Form.Member.getId,
+      guid,
+    );
+  };
+
+  // TODO: Convert this into an Eeyore derive all
+  /** Validate the paramaters passed in and format them into something easier for the internal functions to pass around */
+  let initParams = (~parentId, ~form, ~guid, ~selectorId) => {
+    let root = Form.getRoot(form);
+    let parent = parentId |> getParent(form);
+    let selector = selectorId |> Form.getMember(form);
+
+    uOk()
+    |> concatExn(root)
+    |> concatExn(parent, ~header="We found the following problems adding the selector group:")
+    |> kC(_ => {
+         let root = R.unwrap(root);
+         let parent = R.unwrap(parent);
+         let selector = R.unwrap(selector);
+         let members = [|selector|];
+
+         makeGroup(~parent, ~selector, ~members, guid)
+         |> kC(newGroup => ok({form, root, members, parent, newGroup}));
+       });
+  };
+
+  // Remove mentions of the root group from the members
+  let updateMembership = (groupMap, params) => {
+    Js.log(groupMap);
+    ok(params);
+  };
+};
+
+let addSelectorGroup = (~groupMap=[||], ~parentId=rootGroupId, ~selectorId, guid, form) => {
+  // Get the parent from the form
+  // Get the selector
+  // Create new group with selector as label
+  // Build sub-groups (Simple/Validation) from group map
+  //   - Get each item from form
+  // Wire selector OnChange to modify visible groups
+  AddSelectorGroup.
+    (initParams(~parentId, ~form, ~guid, ~selectorId) |> kC(updateMembership(groupMap)) |> kC(getForm));
+    // |> kC(update)
+};
+
+let getGroup = Form.getGroup;
+
 let addGroup = (form: Form.t, newGroup: Group.t): Result.t(Form.t) => {
   // Get the root group
-  let getRoot = () => getGroup(form, "__root_group");
-
-  // Make sure each of the members contained in the new group exist within the form
-  let verifyMembers = () =>
-    HM.contains(
-      newGroup.memberIds,
-      form.members,
-      ~keysNotFoundMsg=
-        format("Not all members of group '%s' exist in form '%s'. Missing: ", newGroup.guid, form.guid),
-    );
+  let getRoot = () => getGroup(form, rootGroupId);
 
   // Add the new group to the form members
   let insertGroup = (root: Group.t, form: Form.t) => {
@@ -69,31 +153,16 @@ let addGroup = (form: Form.t, newGroup: Group.t): Result.t(Form.t) => {
   // Update the root group membership
   let updateRootGroup = (root: Group.t, form: Form.t) => {
     // Filter out the members included in the group from the root
-    let updated =
-      Array.fold_left(
-        (acc, key) =>
-          switch (Belt.Array.getIndexBy(root.memberIds, a => a == key)) {
-          | Some(_) => acc
-          | None => Array.concat([acc, [|key|]])
-          },
-        [||],
-        newGroup.memberIds,
-      );
-
+    let filtered = A.filterValues(root.memberIds, newGroup.memberIds);
     Belt.HashMap.String.set(
       form.members,
       root.guid,
-      Form.Member.Group({...root, memberIds: Array.concat([updated, [|newGroup.guid|]])}),
+      Form.Member.Group({...root, memberIds: A.append(filtered, newGroup.guid)}),
     );
     ok(form);
   };
 
-  //  |> kC(_ => getGroup(form, "__root_group")) |> kC(_root => {ok(form)});
-  // Validate nested members exist,
-  // Add the group to groups
-  // add membership in group to each field remove from root if need be
-  //
-  verifyMembers()
+  Form.verifyMembers(form, newGroup.memberIds)
   |> kC(_ => getRoot())
   |> kC(root => insertGroup(root, form))
   |> kC(((root: Group.t, form: Form.t)) => updateRootGroup(root, form));
@@ -124,3 +193,11 @@ let addGroup = (form: Form.t, newGroup: Group.t): Result.t(Form.t) => {
 //        ok({...form, fields, _tabOrder: field.guid |> insert(enformer._tabOrder) |> getExn})
 //      );
 // };
+
+// Create Individual Fields
+/** Convert the result of an individual field to a Form.Member.Field */
+let asFieldMember = (newField: Result.t(Field.t)) => newField |> kC(x => ok(Form.Member.Field(x)));
+
+let newTextInput = Field.newTextInput;
+
+let newSelectInput = Field.newSelectInput;

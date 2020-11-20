@@ -8,7 +8,7 @@ open Helpers;
 
 type selectOption = {
   value: string,
-  display: option(string),
+  display: string,
 };
 
 /** This is an example method for creating a drop-box with finite options
@@ -39,10 +39,10 @@ type t = {
   defaultValue: option(string),
 };
 
-let newSelectInput = (~defaultValue=?, opts, guid) => {
+let newSelectInput = (~defaultValue=?, ~_valueFilter=?, opts, guid) => {
   opts
   |> Array.fold_left(
-       (acc, value) => acc |> kC(acc => Options.addOption(acc, value, Some(value))),
+       (acc, (value, display)) => acc |> kC(acc => Options.addOption(acc, value, display)),
        ok(Options.newOptions()),
      )
   |> kC(options => ok({guid, currentValue: None, options, defaultValue}));
@@ -52,12 +52,7 @@ let newSelectInput = (~defaultValue=?, opts, guid) => {
 module Selected = {
   [@react.component]
   let make = (~selected) => {
-    <WithProps
-      props={
-        "data-toggle": "dropdown",
-        "aria-expanded": "false",
-        "title": selected.display->Belt.Option.getWithDefault(selected.value),
-      }>
+    <WithProps props={"data-toggle": "dropdown", "aria-expanded": "false", "title": selected.display}>
       <button type_="button" className=[%tw "btn dropdown-toggle btn-default"]>
         <span className=[%tw "filter-option pull-left"]> selected.value->ReasonReact.string </span>
         "&nbsp;"->ReasonReact.string
@@ -91,17 +86,12 @@ module Menu = {
 };
 
 [@react.component]
-let make = (~field, ~reducer) => {
-  Js.log(reducer);
+let make = (~field, ~dispatch) => {
+  Js.log(dispatch);
   let opts =
     field.options
     |> Options.getOptions
-    |> Array.map(opt =>
-         opt.display
-         ->Belt.Option.mapWithDefault(<option> opt.value->ReasonReact.string </option>, display =>
-             <option value={opt.value}> display->ReasonReact.string </option>
-           )
-       )
+    |> Array.map(opt => <option value={opt.value}> opt.display->ReasonReact.string </option>)
     |> ReasonReact.array;
 
   let selected =

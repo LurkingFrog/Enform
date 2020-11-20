@@ -31,9 +31,9 @@
   // Don't forget to re-add eeyore
   "bs-dependencies": ["bs-webapi", "reason-react", "reason-uuid", "reductive", "eeyo.re"],
   "refmt": 3,
-  "ppx-flags": [["@dylanirlbeck/tailwind-ppx/bin/tailwind-ppx", "-path src/assets/css/tailwind.css"]]
-  // "warnings": {
-  // "number": "+A-42-48-4",
-  // "error": "+A-3-44-102-103"
-  // }
+  "ppx-flags": [["@dylanirlbeck/tailwind-ppx/bin/tailwind-ppx", "-path ./src/assets/css/tailwind.css"]],
+  "warnings": {
+    "number": "+A-42-48-4",
+    "error": "+A-3-44-102-103"
+  }
 }

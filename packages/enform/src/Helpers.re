@@ -1,24 +1,38 @@
 /** Some common shortcuts and aliases used throughout the software
  *
- * These are not specific to any specific module or type defined in this package
+ * These are not specific to any specific module or type defined in this package, and are meant for internal
+ * use only. Possibly to be re-exorted as a separate module, since I use most of these patterns in all of my
+ * code.
+ *
+ * TODO:
+ * - Convert to ReScript if moved to a separate module
  */;
 
-open Eeyore;
+// -- Library Constants --
+/** Hard coded member Id for the root node of each form */
+let rootGroupId = "__root_group";
 
-// Re-export Eeyo's functions
-let ok = Eeyo.ok;
-let err = Eeyo.err;
-let kC = Eeyo.kC;
-let flattenExn = Eeyo.flattenExn;
-let getExn = Eeyo.getExn;
-let mapErr = Eeyo.mapErr;
-// End Re-export
+// -- End Library Constants --
+
+// -- Error Handling Functions --
+open Eeyore;
 
 module Result = {
   type t('a) = Belt.Result.t('a, Eeyo.t(Errors.t));
 };
+let ok = Eeyo.ok;
+/** Return the unit Ok result. Auto-formatting seems to have trouble with this. */
+let uOk = (): Result.t(unit) => ok();
+let err = Eeyo.err;
+let kC = Eeyo.kC;
+let chain = Eeyo.chain;
+let flattenExn = Eeyo.flattenExn;
+let getExn = Eeyo.getExn;
+let concatExn = Eeyo.concatExn;
+let mapErr = Eeyo.mapErr;
+// -- End Error Handling Functions --
 
-/** Re-export srpintf as format */
+/** Re-export sprintf as format */
 let format = x => Printf.sprintf(x);
 
 /** Convert None to a NotFound error.
@@ -66,6 +80,87 @@ let insert = (~position=None, values: array('a), item: 'a) => {
       ok(concatMany([|slice(~offset=0, ~len=pos - 1, values), [|item|], sliceToEnd(values, pos)|]))
     }
   );
+};
+
+/** Result functions */
+module R = {
+  //
+  let unwrap = (result: Belt.Result.t('a, Eeyo.t('b))) =>
+    switch (result) {
+    | Ok(x) => x
+    | Error(x) => Js.Exn.raiseError(format("Tried to unwrap an error:\n%s", x.msg))
+    };
+};
+
+/** Array functions */
+module A = {
+  /** Append a single value to the end of an existing array */
+  let append = (arr, value) => Array.concat([arr, [|value|]]);
+
+  /** Remove an array of keys from the array
+   *
+   * TODO:
+   * - Make sure it works for repeat values
+   */
+  let filterValues = (full, filter) =>
+    Array.fold_left(
+      (acc, key) =>
+        switch (Belt.Array.getIndexBy(full, (a: string) => a == key)) {
+        | Some(_) => acc
+        | None => append(acc, key)
+        },
+      [||],
+      filter,
+    );
+
+  /** Return an array of unwrapped values */
+  let filterNone = () => {
+    Array.fold_left(
+      (acc, value) =>
+        switch (value) {
+        | Some(x) => append(acc, x)
+        | None => acc
+        },
+      [||],
+    );
+  };
+
+  let flattenExn = (~groupErrorMsg=None, arr) =>
+    arr |> Array.to_list |> Eeyo.flattenExn(~groupErrorMsg) |> kC(arr => ok(arr |> Array.of_list));
+};
+
+/** List functions */
+module L = {
+  /** Append a single value to the end of an existing array */
+  let append = (arr, value) => List.concat([arr, [value]]);
+
+  /** Remove an array of keys from the array
+   *
+   * TODO:
+   * - Make sure it works for repeat values
+   */
+  let filterValues = (full, filter) =>
+    List.fold_left(
+      (acc, key) =>
+        switch (Belt.List.getBy(full, (a: string) => a == key)) {
+        | Some(_) => acc
+        | None => append(acc, key)
+        },
+      [],
+      filter,
+    );
+
+  /** Return an array of unwrapped values */
+  let filterNone = () => {
+    List.fold_left(
+      (acc, value) =>
+        switch (value) {
+        | Some(x) => append(acc, x)
+        | None => acc
+        },
+      [],
+    );
+  };
 };
 
 /** Some hashmap functions I tend to use a lot */
@@ -118,14 +213,26 @@ module HM = {
   };
 
   /** Ensure a list of keys is exists within a hashmap */
-  let contains = (~keysNotFoundMsg, keys, hashMap) =>
+  let getValues = (~keysNotFoundMsg, ~ignoreMissing=false, keys, hashMap) =>
     keys
-    |> Array.to_list
-    |> List.map(key =>
-         Belt.HashMap.String.get(hashMap, key)
-         |> mapNone(~msg=format("Key '%s' not found", key), Errors.NotFound)
+    |> Array.fold_left(
+         (acc, key) => {
+           let value = Belt.HashMap.String.get(hashMap, key);
+           switch (ignoreMissing, value) {
+           | (_, Some(x)) => A.append(acc, ok(x))
+           | (true, None) => acc
+           | (false, None) => A.append(acc, err(~msg=format("Key '%s' not found", key), Errors.NotFound))
+           };
+         },
+         [||],
        )
-    |> flattenExn(~groupErrorMsg=keysNotFoundMsg);
+    |> A.flattenExn(~groupErrorMsg=Some(keysNotFoundMsg));
+};
+
+/** Belt.Option wrappers */
+module O = {
+  /** Alias for Belt.Option.getWithDefault */
+  let getOr = (opt, default) => opt |> Belt.Option.getWithDefault(default);
 };
 
 /** Get the last value in an array

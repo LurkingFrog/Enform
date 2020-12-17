@@ -1,4 +1,6 @@
-/** Some common shortcuts and aliases used throughout the software
+/** Some common shortcuts and aliases used throughout the software.
+ *
+ * This is mostly wrapping the Belt functions in Eeyo errors.
  *
  * These are not specific to any specific module or type defined in this package, and are meant for internal
  * use only. Possibly to be re-exorted as a separate module, since I use most of these patterns in all of my
@@ -25,15 +27,30 @@ let ok = Eeyo.ok;
 let uOk = (): Result.t(unit) => ok();
 let err = Eeyo.err;
 let kC = Eeyo.kC;
+let apply = Eeyo.apply;
+let curry = Eeyo.curry;
 let chain = Eeyo.chain;
 let flattenExn = Eeyo.flattenExn;
 let getExn = Eeyo.getExn;
 let concatExn = Eeyo.concatExn;
+let map = Eeyo.map;
 let mapErr = Eeyo.mapErr;
+let ifOk = Eeyo.map;
 // -- End Error Handling Functions --
 
 /** Re-export sprintf as format */
 let format = x => Printf.sprintf(x);
+
+/** Some internal debugging tools that shouldn't end up in the live code*/
+module Debugging = {
+  /** Write a checkpoint to the Javascript console and echo the value   */
+
+  let chpt = (~msg="", value) => {
+    Js.log(format("Checkpoint: %s", msg));
+    Js.log(value);
+    value;
+  };
+};
 
 /** Convert None to a NotFound error.
  *
@@ -90,29 +107,88 @@ module R = {
     | Ok(x) => x
     | Error(x) => Js.Exn.raiseError(format("Tried to unwrap an error:\n%s", x.msg))
     };
+
+  /** Elevate a scalar result into an array with one element */
+  let intoArray = result =>
+    switch (result) {
+    | Ok(x) => Ok([|x|])
+    | Error(x) => Error(x)
+    };
 };
 
 /** Array functions */
 module A = {
-  /** Append a single value to the end of an existing array */
+  /** Alias for length */
+  let len = Belt.Array.length;
+
+  /** Append a single value to a list */
   let append = (arr, value) => Array.concat([arr, [|value|]]);
+
+  /** Append a result into an array of results, if both are Ok. Flatten the errors if not */
+  let appendR = (~_groupErrorMsg=None, scalar: Belt.Result.t('a, 'b), base: Belt.Result.t(array('a), 'b)) => {
+    let curried = curry(append, base);
+    ok((curried |> R.unwrap)(R.unwrap(scalar)));
+    // apply(~groupErrorMsg, curried, scalar);
+  };
+
+  /** Append a single value to the end of an existing array
+   *
+   * @param unique Raise an error if the item to be added already exists in the array
+   * @param noDup Skip adding the value to the array if it already exists
+  */
+  let appendStr = (~unique=false, ~noDup=false, arr, value) => {
+    switch (unique, noDup) {
+    | (false, false) => ok(Array.concat([arr, [|value|]]))
+    | (true, _) =>
+      switch (Belt.Array.getIndexBy(arr, x => x == value)) {
+      | Some(_) =>
+        err(~msg=format("Failed to append '%s' because it was not unique", value), Errors.DuplicateKey)
+      | None => ok(Array.concat([arr, [|value|]]))
+      }
+    | (false, true) =>
+      switch (Belt.Array.getIndexBy(arr, x => x == value)) {
+      | Some(_) => ok(arr)
+      | None => ok(Array.concat([arr, [|value|]]))
+      }
+    };
+  };
+
+  /** Check whether a string is contained in an array, and return the indicies of matching values
+   *
+   * TODO: Move this into Algae.B.re
+  */
+  let hasStr = (~notFoundMsg=?, ~firstOnly=true, arr, value) => {
+    let result =
+      firstOnly
+        ? switch (Belt.Array.getIndexBy(arr, (a: string) => a == value)) {
+          | Some(i) => [|i|]
+          | None => [||]
+          }
+        : Belt.Array.reduceWithIndex(arr, [||], (acc, key, i) => key == value ? append(acc, i) : acc);
+    switch (result |> Belt.Array.length, notFoundMsg) {
+    | (0, Some(msg)) => err(~msg, Errors.NotFound)
+    | (0, None) =>
+      err(~msg=format("The string '%s' is not a member of the array", value), Errors.NotFound)
+    | _ => ok(result)
+    };
+  };
 
   /** Remove an array of keys from the array
    *
    * TODO:
    * - Make sure it works for repeat values
    */
-  let filterValues = (full, filter) =>
+  let filterValues = (full, filter) => {
     Array.fold_left(
       (acc, key) =>
-        switch (Belt.Array.getIndexBy(full, (a: string) => a == key)) {
+        switch (Belt.Array.getIndexBy(filter, (a: string) => a == key)) {
         | Some(_) => acc
         | None => append(acc, key)
         },
       [||],
-      filter,
+      full,
     );
-
+  };
   /** Return an array of unwrapped values */
   let filterNone = () => {
     Array.fold_left(
@@ -127,6 +203,8 @@ module A = {
 
   let flattenExn = (~groupErrorMsg=None, arr) =>
     arr |> Array.to_list |> Eeyo.flattenExn(~groupErrorMsg) |> kC(arr => ok(arr |> Array.of_list));
+
+  let flatMap = (~groupErrorMsg=None, func, arr) => Array.map(func, arr) |> flattenExn(~groupErrorMsg);
 };
 
 /** List functions */
@@ -233,6 +311,18 @@ module HM = {
 module O = {
   /** Alias for Belt.Option.getWithDefault */
   let getOr = (opt, default) => opt |> Belt.Option.getWithDefault(default);
+
+  /** map a function to the value if the option contains a value, or return an error
+   *
+   * The default function is option('a) => Ok('a)
+  */
+  let mapSome =
+      (~errMsg="Received a None value when Some was expected", ~errType="Errors.IsNone", ~func=?, value) =>
+    switch (value, func) {
+    | (Some(value), None) => ok(value)
+    | (Some(value), Some(func)) => value |> func
+    | (None, _) => err(~msg=errMsg, errType)
+    };
 };
 
 /** Get the last value in an array

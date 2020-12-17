@@ -21,27 +21,27 @@ and t = {
 [@react.component]
 let make = (~field, ~dispatch) => {
   Js.log("Rendering Enform field ... " ++ field.guid);
-  Js.log(field);
-  Js.log(dispatch);
-  // Get the field
-  // switch (Form.getField(fieldId, form)) {
-  // | Ok(field) =>
-  //   Js.log(field);
-  //   switch (field.fieldType) {
-  //   | Group(conf) =>
-  //     let children = conf.fieldGuids |> Array.map(renderField(form, dispatch)) |> ReasonReact.array;
-  //     <Group conf dispatch> children </Group>;
-  //   | _ =>
-  //     <div>
-  //       {{
-  //          "Matched a field but not yet implemented: " ++ fieldId;
-  //        }
-  //        ->ReasonReact.string}
-  //     </div>
-  //   };
-  // | _ => Js.Exn.raiseError("Could not find field " ++ fieldId)
-  // };
-  <div> "Placeholder for a rendered field: "->ReasonReact.string field.guid->ReasonReact.string </div>;
+  // Js.log(field);
+  let _ = dispatch;
+  // Search: class="([-\w\s]+)"
+  // Replace: className=[%tw "$1"]
+
+  let label = field.common.label |> O.getOr("") |> ReasonReact.string;
+  let help =
+    switch (field.common.help) {
+    | Some(txt) => <span className=[%tw "help-block"]> txt->ReasonReact.string </span>
+    | None => ReasonReact.null
+    };
+  let rendered =
+    switch (field.fieldType) {
+    | Button(conf) => <Button conf />
+    | Text(conf) => <Text conf />
+    | Select(conf) => <Select conf dispatch />
+    };
+  <div className=[%tw "form-group"]>
+    <label className=[%tw "col-md-3 col-xs-12 control-label"]> label </label>
+    <div className=[%tw "col-md-6 col-xs-12"]> rendered help </div>
+  </div>;
 };
 
 /* Field Constructors */
@@ -52,10 +52,10 @@ let newButton = (~config=?, guid) =>
     common: config |> O.getOr(Common.newCommonConfig(guid) |> getExn),
   });
 
-let newTextInput = (~config=?, guid) =>
+let newTextInput = (~config=?, ~icon=?, guid) =>
   ok({
     guid,
-    fieldType: Text(Text.newTextInput(guid)),
+    fieldType: Text(Text.newTextInput(~icon, guid)),
     common: config |> O.getOr(Common.newCommonConfig(guid) |> getExn),
   });
 

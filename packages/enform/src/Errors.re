@@ -15,6 +15,8 @@ type t =
     InvalidEnum
   | /** The format entered cannot be parsed to the expected value */
     InvalidFormat
+  | /** Received a None value when Some was expected */
+    IsNone
   | /** When an item isn't located in a group */
     NotFound
   | /** Index isn't in the range of the given list/array */

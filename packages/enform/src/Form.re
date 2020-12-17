@@ -4,6 +4,7 @@
  * - Tab Ordering
 */
 open Helpers;
+open Debugging;
 
 module Config = {
   type t = {
@@ -18,19 +19,77 @@ module Config = {
 module Member = {
   type t =
     | Field(Field.t)
-    | Group(Group.t)
-    | /** Variable number of clones of the same type of member - Like having different phone-numbers */
-      List(
-        string,
-        array(t),
-      );
+    | Group(Group.t);
+  // | /** Variable number of clones of the same type of member - Like having different phone-numbers */
+  //   List(
+  //     string,
+  //     array(t),
+  //   );
 
   let getId = member =>
     switch (member) {
     | Field(x) => x.guid
     | Group(x) => x.guid
-    | List(x, _) => x
+    // | List(x, _) => x
     };
+
+  /** Get the ids of groups to which the member belongs */
+  let rec getMemberOf = member => {
+    switch (member) {
+    | Field(x) => x.common.memberOf
+    | Group(x) => x.common.memberOf
+    };
+  };
+
+  let setMemberOf = (member, membershipIds) => {
+    switch (member) {
+    | Field(x) => Field({
+                    ...x,
+                    common: {
+                      ...x.common,
+                      memberOf: membershipIds,
+                    },
+                  })
+    | Group(x) => Group({
+                    ...x,
+                    common: {
+                      ...x.common,
+                      memberOf: membershipIds,
+                    },
+                  })
+    };
+  };
+
+  /** Uniquely append a child id to the given group type memberId
+   *
+   * From level validation should be done before this call.
+   */
+  let addChild = (parent, childId) => {
+    switch (parent) {
+    | Field(x) =>
+      err(
+        ~msg=format("Failed to add child '%s' because '%s' is not a group", childId, x.guid),
+        Errors.BadValue,
+      )
+    | Group(x) => Group.addMember(childId, x) |> kC(x => ok(Group(x)))
+    };
+  };
+
+  let removeChild = (~allowUnknown=true, member, childId) => {
+    switch (member) {
+    | Field(x) =>
+      err(
+        ~msg=
+          format(
+            "Failed to remove child '%s' because '%s' is a field type and has no children to remove",
+            x.guid,
+            childId,
+          ),
+        Errors.BadValue,
+      )
+    | Group(x) => Group.removeMember(~allowUnknown, x, childId) |> kC(x => ok(Group(x)))
+    };
+  };
 };
 
 /** Keep track of the form as a whole */
@@ -88,15 +147,257 @@ let newForm = (~guid=?, ()): Result.t(t) => {
    };
  */
 
+let getGroup = (form: t, groupId) => {
+  HM.find(
+    ~notFound=Some(format("Could not find group with id '%s' in form '%s'", groupId, form.guid)),
+    form.members,
+    groupId,
+  )
+  |> kC(group =>
+       switch (group) {
+       | Member.Group(x) => ok(x)
+       | _ => err(~msg=format("Id '%s' belongs to a field and not a group", groupId), Errors.BadValue)
+       }
+     );
+};
+
+/** Retrieve a member from the form by its guid */
+let getMember = (form: t, memberId) => {
+  HM.find(
+    ~notFound=Some(format("Could not find member with id '%s' in form '%s'", memberId, form.guid)),
+    form.members,
+    memberId,
+  );
+};
+
+/** Upsert a member in a given form */
+let setMember = (form: t, member: Member.t) => {
+  Belt.HashMap.String.set(form.members, member |> Member.getId, member);
+  ok(form);
+};
+
+let getMember = (form: t, memberId) => {
+  HM.find(
+    ~notFound=Some(format("Could not find field with id '%s' in form '%s'", memberId, form.guid)),
+    form.members,
+    memberId,
+  );
+};
+
+/** Move the member from its existing group (root by default) into a sub-group
+ *
+ * @param form The form which the member and target are registered with
+ * @param memberId The guid of the member to be added
+ * @param targetId The guid of the group to add the member to
+ * @param allowFromRootOnly Throw an error if the member is a member of any groups other than the form's root group. Defaults to true.
+ * @param removeFromOtherGroups This makes sure that the target is the only group thet item is a member of, clearing the rest. Defaults to true.
+ */
+let addMemberToGroup = (~removeFromOtherGroups=true, ~allowFromRootOnly=true, form: t, memberId, targetId) => {
+  // Js.log(
+  //   format(
+  //     "Moving member '%s' to '%s'. Remove from other groups: %b, allow from root only: %b ",
+  //     memberId,
+  //     targetId,
+  //     removeFromOtherGroups,
+  //     allowFromRootOnly,
+  //   ),
+  // );
+  let member = memberId |> getMember(form);
+  let target = targetId |> getMember(form);
+
+  let removeMemberFromParents = parents => {
+    parents
+    |> Array.fold_left(
+         (acc, parentId) => {
+           parentId == targetId
+             ? acc
+             : A.append(
+                 acc,
+                 parentId
+                 |> getMember(form)
+                 |> kC(parent => Member.removeChild(~allowUnknown=true, parent, memberId)),
+               )
+         },
+         [||],
+       )
+    |> A.flattenExn(
+         ~groupErrorMsg=Some(format("Failed to update the existing parents of member '%s':", memberId)),
+       );
+  };
+
+  [|member, target|]
+  |> A.flattenExn(
+       ~groupErrorMsg=Some(format("Could not add member '%s' to group '%s':", memberId, targetId)),
+     )
+  |> kC(_ => {
+       let memberOf = member |> R.unwrap |> Member.getMemberOf;
+       switch (allowFromRootOnly) {
+       | false => ok(memberOf)
+       | true => rootGroupId |> A.hasStr(memberOf) |> kC(_ => ok(memberOf))
+       };
+     })
+  |> kC(memberOf => {
+       // Member - Change MemberOf (add/replace target)
+       (removeFromOtherGroups ? removeMemberFromParents(memberOf) : ok([||]))
+       |> A.appendR(
+            removeFromOtherGroups
+              ? ok(Member.setMemberOf(member |> R.unwrap, [|targetId|]))
+              : targetId
+                |> A.appendStr(member |> R.unwrap |> Member.getMemberOf)
+                |> kC((membership: array(string)) =>
+                     ok(Member.setMemberOf(member |> R.unwrap, membership))
+                   ),
+          )
+       |> A.appendR(R.unwrap(target)->Member.addChild(memberId))
+     })
+  |> kC(updatedMembers
+       // Add the updated fields back to the form
+       =>
+         updatedMembers
+         |> Array.fold_left((acc, member) => acc |> kC(form => setMember(form, member)), ok(form))
+       );
+};
+
+/** Shortcut to add multiple members to the same group */
+let addMembersToGroup = (~removeFromOtherGroups=true, ~allowFromRootOnly=true, memberIds, targetId, form) => {
+  memberIds
+  |> Array.fold_left(
+       (acc, memberId) =>
+         acc
+         |> kC(form =>
+              addMemberToGroup(~removeFromOtherGroups, ~allowFromRootOnly, form, memberId, targetId)
+            ),
+       ok(form),
+     );
+};
+
+/** Add a manually constructed group to the form
+ *
+ * This validates and updates the membership based on the internal keys
+*/
+let addGroup = (form: t, group: Group.t) => {
+  // Verify the parent members exist in the form and add the new group as a child to each
+  let parents =
+    group.common.memberOf
+    |> Array.map(getGroup(form))
+    |> A.flattenExn(
+         ~groupErrorMsg=
+           Some(format("The new group '%s' contains parents that don't exist in the form:", group.guid)),
+       )
+    |> kC(parents =>
+         ok(
+           parents
+           |> Array.map((parent: Group.t) =>
+                {...parent, memberIds: A.appendStr(~noDup=true, parent.memberIds, group.guid) |> getExn}
+              ),
+         )
+       );
+
+  // Verify each of the new group's children exist in the form
+  let members =
+    group.memberIds
+    |> Array.map(getMember(form))
+    |> A.flattenExn(
+         ~groupErrorMsg=
+           Some(
+             format("The new group '%s' contains members that don't yet exist in the form:", group.guid),
+           ),
+       );
+
+  parents
+  |> concatExn(members)
+  // Insert the new group into the form
+  |> kC(_ =>
+       HM.insert(
+         ~dupError=
+           Some(format("Group with key '%s' already exists in the form %s", group.guid, form.guid)),
+         group.guid,
+         Member.Group(group),
+         form.members,
+       )
+     )
+  |> kC(members => ok({...form, members, _tabOrder: group.guid |> insert(form._tabOrder) |> getExn}))
+  |> kC(form => {
+       // Add the new group to each parent as a child
+       parents
+       |> R.unwrap
+       |> Array.fold_left(
+            (acc, parent: Group.t) =>
+              acc
+              |> kC(form =>
+                   addMemberToGroup(
+                     ~removeFromOtherGroups=true,
+                     ~allowFromRootOnly=false,
+                     form,
+                     group.guid,
+                     parent.guid,
+                   )
+                 ),
+            ok(form),
+          )
+     })
+  |> kC(form => {
+       // Add move each member to the group as a child
+       members
+       |> R.unwrap
+       |> Array.fold_left(
+            (acc, child: Member.t) =>
+              acc
+              |> kC(form =>
+                   addMemberToGroup(
+                     ~removeFromOtherGroups=true,
+                     ~allowFromRootOnly=true,
+                     form,
+                     child |> Member.getId,
+                     group.guid,
+                   )
+                 ),
+            ok(form),
+          )
+     });
+  // validate keys
+  // add new group to form
+  // add the new group to each parent's members
+  //
+};
+
+let getRoot = form => {
+  getGroup(form, Helpers.rootGroupId);
+};
+
 /** Add a single field */
 let addField = (field: Field.t, form: t) => {
-  form.members
-  |> HM.insert(
-       ~dupError=Some(format("Item with key '%s' already exists in the hash map", field.guid)),
-       field.guid,
-       Member.Field(field),
+  // Update each of the groups the field is a member of
+  let groups =
+    (
+      switch (field.common.memberOf) {
+      | [||] => [|rootGroupId|]
+      | x => x
+      }
+    )
+    |> A.flatMap(groupId => getGroup(form, groupId) |> kC(group => Group.addMember(field.guid, group)));
+
+  uOk()
+  |> concatExn(groups)
+  |> kC(_ =>
+       HM.insert(
+         ~dupError=Some(format("Item with key '%s' already exists in the hash map", field.guid)),
+         field.guid,
+         Member.Field(field),
+         form.members,
+       )
      )
-  |> kC(members => ok({...form, members, _tabOrder: field.guid |> insert(form._tabOrder) |> getExn}));
+  |> kC(members =>
+       {
+         groups
+         |> getExn
+         |> Array.iter((group: Group.t) =>
+              Belt.HashMap.String.set(members, group.guid, Member.Group(group))
+            );
+         ok(members);
+       }
+       |> kC(members => ok({...form, members, _tabOrder: field.guid |> insert(form._tabOrder) |> getExn}))
+     );
 };
 
 let _getField = (guid: string, form: t) => {
@@ -112,29 +413,7 @@ let setField = (field: Field.t, form: t) => {
   ok(form);
 };
 
-// let addFieldsToGroup = (fields: array(string), guid: string, enformer: t) => {
-//   // Verify all the fields exist
-//   fields
-//   |> Array.map(field => getField(field, enformer))
-//   |> Array.to_list
-//   |> flattenExn(~groupErrorMsg="Failed to all fields to the group:")
-//   |> kC(_ => enformer |> getField(guid))
-//   |> kC((group: Field.t) =>
-//        switch (group.fieldType) {
-//        | Member.Group(conf) => {...group, fieldType: Group(conf)}->setField(enformer)
-//        | _ => err(~msg=sprintf("Field '%s' is not a group", guid), Errors.InvalidEnum)
-//        }
-//      );
-// };
-
-let getMember = (form: t, memberId) => {
-  HM.find(
-    ~notFound=Some(format("Could not find member with id '%s' in form '%s'", memberId, form.guid)),
-    form.members,
-    memberId,
-  );
-};
-
+/** Retrieve a field by ID and unwrap the from the Member enum */
 let getField = (form: t, fieldId) => {
   HM.find(
     ~notFound=Some(format("Could not find field with id '%s' in form '%s'", fieldId, form.guid)),
@@ -149,24 +428,6 @@ let getField = (form: t, fieldId) => {
      );
 };
 
-let getGroup = (form: t, groupId) => {
-  HM.find(
-    ~notFound=Some(format("Could not find group with id '%s' in form '%s'", groupId, form.guid)),
-    form.members,
-    groupId,
-  )
-  |> kC(group =>
-       switch (group) {
-       | Member.Group(x) => ok(x)
-       | _ => err(~msg=format("Id '%s' belongs to a field and not a group", groupId), Errors.BadValue)
-       }
-     );
-};
-
-let getRoot = form => {
-  getGroup(form, Helpers.rootGroupId);
-};
-
 // Make sure each of the members contained in the new group exist within the form
 let verifyMembers = (form, memberIds) =>
   HM.getValues(
@@ -176,19 +437,18 @@ let verifyMembers = (form, memberIds) =>
   );
 
 let rec renderMember = (form, dispatch, memberId) => {
-  let member =
-    switch (memberId |> getMember(form) |> getExn) {
-    | Member.Group(group) =>
-      let children = group.memberIds |> Array.map(renderMember(form, dispatch)) |> ReasonReact.array;
-      <Group group dispatch> children </Group>;
-    | Member.Field(field) => <Field field dispatch />
-    | Member.List(_, members) =>
-      members
-      |> Array.map(member => member |> Member.getId |> renderMember(form, dispatch))
-      |> ReasonReact.array
-    };
-
-  <div className=[%tw ""] key=memberId> member </div>;
+  switch (memberId |> getMember(form) |> getExn) {
+  | Member.Group(group) =>
+    Js.log(format("Rendering Group Member: %s", memberId));
+    <Group group dispatch renderer={renderMember(form, dispatch)} key={group.guid} />;
+  | Member.Field(field) =>
+    Js.log(format("Rendering Field Member: %s", memberId));
+    <Field field dispatch key={field.guid} />;
+  // | Member.List(_, members) =>
+  //   members
+  //   |> Array.map(member => member |> Member.getId |> renderMember(form, dispatch))
+  //   |> ReasonReact.array
+  };
 };
 
 /** A quick renderer of an entire form
@@ -197,13 +457,7 @@ let rec renderMember = (form, dispatch, memberId) => {
  */
 [@react.component]
 let make = (~form, ~dispatch) => {
-  let root_group = getGroup(form, rootGroupId) |> getExn;
-  Js.log("\n\nRendering the form");
-  Js.log(root_group);
-
-  // Render each field individually by tab order, hiding everything in groups.
-  let fields = root_group.memberIds |> Array.map(renderMember(form, dispatch));
-
-  // For each __root item, render it
-  <div className=[%tw "form-material"]> {fields |> ReasonReact.array} </div>;
+  Js.log("Rendering the form");
+  Js.log(form);
+  <div className=[%tw "form-horizontal"]> {renderMember(form, dispatch, rootGroupId)} </div>;
 };

@@ -5,17 +5,11 @@
   },
   "sources": {
     "dir": "src",
-    "subdirs": true,
-    "generators": [
-      {
-        "name": "gen-tailwind",
-        "edge": ["assets/css/tailwind.css", ":", "./assets/css/default.css"]
-      }
-    ]
+    "subdirs": true
   },
   "generators": [
     {
-      "name": "gen-tailwind",
+      "name": "gen_tailwind",
       "command": "tailwindcss build $in -o $out"
     }
   ],

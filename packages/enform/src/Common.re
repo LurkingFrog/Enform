@@ -32,6 +32,7 @@ module EventHandlers = {
 type t = {
   guid: string,
   label: option(string),
+  help: option(string),
   state,
   /** A guid list of the groups that this item belongs to. */
   memberOf: array(string),
@@ -44,5 +45,5 @@ type t = {
 };
 
 /** Create a default component configuration */
-let newCommonConfig = (~label=?, guid) =>
-  ok({guid, label, state: New, memberOf: [|rootGroupId|], eventHandlers: EventHandlers.default()});
+let newCommonConfig = (~label=?, ~help=?, ~memberOf=[|rootGroupId|], guid) =>
+  ok({guid, label, help, state: New, memberOf, eventHandlers: EventHandlers.default()});

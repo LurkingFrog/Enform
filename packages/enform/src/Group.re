@@ -17,7 +17,7 @@ module Selector = {
     /** The field that drives the state of the entire group */
     selectorId: string,
     /** Group to be displayed for each value of selector */
-    groups: Belt.HashMap.String.t(string),
+    groupMap: Belt.HashMap.String.t(string),
     //
     // ----  Events
     /** Fired when the selector is changed. It takes the value of */
@@ -31,16 +31,13 @@ module Selector = {
 
   let newSelector = selectorId => {
     selectorId,
-    groups: Belt.HashMap.String.make(~hintSize=5),
+    groupMap: Belt.HashMap.String.make(~hintSize=5),
     onChange: defaultOnChange,
   };
-
-  [@react.component]
-  let make = (~field, ~dispatch) => {
-    Js.log(field);
-    Js.log(dispatch);
-    <div className=[%tw ""]> "Placeholder for Selector"->ReasonReact.string </div>;
-  };
+  // [@react.component]
+  // let make = (~group, ~renderer, ~members) => {
+  //   <div className=[%tw ""]> "Placeholder for Selector"->ReasonReact.string </div>;
+  // };
 };
 
 type groupType =
@@ -50,22 +47,46 @@ type groupType =
     )
   | /** This is for items like radio buttons and checkboxes, where one wants one or more options selected */
     Chooser
-  | /** A basic node which only ties the members into a unit so they may be validated together */
+  | /** A basic node which only ties the members into a unit so they may be validated together
+     *
+     *  This is used for the root node of the form
+     */
     Simple;
 
 type t = {
   guid: string,
   groupType,
-  parentId: string,
   memberIds: array(string),
+  common: Common.t,
   // accessors?
 };
 
-let newSimpleGroup = (~parentId=rootGroupId, guid) =>
-  ok({guid, groupType: Simple, parentId, memberIds: [||]});
+/** Add a new member to the end of the group's members */
+let addMember = (memberId, group) =>
+  // Only add the id if it wasn't previously added
+  memberId |> A.appendStr(~noDup=true, group.memberIds) |> kC(memberIds => ok({...group, memberIds}));
 
+/** Remove an child from the group
+ *
+ * @param allowUnknown Don't throw an error if the child isn't contained in the group
+ */
+let removeMember = (~allowUnknown=false, group, childId) => {
+  let memberIds = [|childId|] |> A.filterValues(group.memberIds);
+  allowUnknown || memberIds |> A.len != (group.memberIds |> A.len)
+    ? ok({...group, memberIds})
+    : err(
+        ~msg=format("Could not remove unknown child '%s' from group '%s'", childId, group.guid),
+        Errors.NotFound,
+      );
+};
+
+let newSimpleGroup = (~parentId=rootGroupId, ~memberIds=[||], guid) => {
+  Common.newCommonConfig(~memberOf=[|parentId|], guid)
+  |> kC(common => ok({guid, groupType: Simple, common, memberIds}));
+};
 let newSelectorGroup = (~parentId=rootGroupId, ~memberIds=[||], ~selectorId="", guid) =>
-  ok({guid, groupType: Selector(Selector.newSelector(selectorId)), parentId, memberIds});
+  Common.newCommonConfig(~memberOf=[|parentId|], guid)
+  |> kC(common => ok({guid, groupType: Selector(Selector.newSelector(selectorId)), common, memberIds}));
 
 let setSelector = (group, memberId) =>
   switch (group.groupType) {
@@ -74,19 +95,35 @@ let setSelector = (group, memberId) =>
   };
 
 [@react.component]
-let make = (~group, ~dispatch, ~children) => {
-  let body =
-    switch (group.groupType) {
-    | Selector(field) => <Selector field dispatch />
-    | _ => <div> "Non-Select group not yet implemented"->ReasonReact.string </div>
-    };
+let make = (~group, ~dispatch, ~renderer) => {
+  let _ = dispatch;
+  Js.log("Who Am I");
+  Js.log(group);
+  switch (group.groupType) {
+  | Selector(conf) =>
+    Js.log("-- Rendering the Selector");
+    let selector = conf.selectorId |> renderer;
+    let groups =
+      conf.groupMap
+      |> Belt.HashMap.String.toArray
+      |> Array.map(((optionId, subGroupId)) => {
+           let members = subGroupId |> renderer;
+           let subGroupId = format("SelectGroup__%s__%s", group.guid, optionId);
+           <div id=subGroupId key=subGroupId> members </div>;
+         })
+      |> ReasonReact.array;
 
-  <div className=[%tw "field-group"]>
-    <div className=[%tw "form-group"]>
-      <label className=[%tw "col-md-3 col-xs-12 control-label"]> "Select"->ReasonReact.string </label>
-      body
-    </div>
-    {"Placeholder for Group Named" ++ group.guid |> ReasonReact.string}
-    children
-  </div>;
+    Js.log("After");
+    <div className=[%tw "form-group"] key={group.guid}>
+      selector
+      <div className=[%tw "col-md-3 col-xs-12 control-label"]> ReasonReact.null </div>
+      <div className=[%tw "col-md-6 col-xs-12 field-group"]> groups </div>
+    </div>;
+
+  | Simple =>
+    Js.log(group.memberIds);
+    group.memberIds |> Array.map(renderer) |> ReasonReact.array;
+
+  | _ => <div key={group.guid}> "Non-Select group not yet implemented"->ReasonReact.string </div>
+  };
 };

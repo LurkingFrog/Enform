@@ -11,6 +11,12 @@ type selectOption = {
   display: string,
 };
 
+type displayMethod =
+  | Basic
+  | Button
+  | TextFilter
+  | Custom;
+
 /** This is an example method for creating a drop-box with finite options
  *
  * TODO: Change this to use a text box as a filter. Code for the filter should be in Filt.re
@@ -33,19 +39,91 @@ type t = {
   // Field Data
   guid: string,
   options: Options.t,
-  currentValue: option(string),
+  /** Select the way to render the display */
+  displayMethod,
+  /** Storage of the selected option */
+  currentValue: string,
+  /** The value this is set to when the form is loaded/cleared */
+  initialValue: string,
+  /** Guid of the option to treat as null/empty  */
+  noneValue: option(string),
   // Display options
   /** The value that should be selected when the field is first loaded */
   defaultValue: option(string),
 };
 
-let newSelectInput = (~defaultValue=?, ~_valueFilter=?, opts, guid) => {
-  opts
-  |> Array.fold_left(
-       (acc, (value, display)) => acc |> kC(acc => Options.addOption(acc, value, display)),
-       ok(Options.newOptions()),
+/** Create a new Select Input
+ *
+ * @param defaultValue The guid of the option to display when one has yet to be selected
+ * @param noneValue The guid to be used as an empty selection. If this doesn't exist, it will be added with a
+ *        blank display.
+ * @param _value_filter This will control which options are visible at any given time. It will be used at times
+ *        such as using a text box filter instead of a dropdown.
+ */
+let newSelectInput = (~defaultValue=?, ~noneValue=?, ~_valueFilter=?, opts, guid) => {
+  (
+    switch (opts |> Belt.Array.length) {
+    | 0 => err(~msg=format("Cannot create Select Input '%s' with no options", guid), Errors.BadValue)
+    | _ => ok(opts)
+    }
+  )
+  |> kC(_ =>
+       opts
+       |> Array.fold_left(
+            (acc, (value, display)) => acc |> kC(acc => Options.addOption(acc, value, display)),
+            ok(Options.newOptions()),
+          )
      )
-  |> kC(options => ok({guid, currentValue: None, options, defaultValue}));
+  |> kC((options: Options.t)
+       // Ensure the noneValue gets created if it doesn't already exist
+       =>
+         switch (noneValue) {
+         | None => ok(options)
+         | Some(noneGuid) =>
+           switch (HM.find(options.lookup, noneGuid)) {
+           | Ok(_) => ok(options)
+           | Error(_) => Options.addOption(options, noneGuid, "")
+           }
+         }
+       )
+  |> kC((options: Options.t) => {
+       let initialValue =
+         switch (defaultValue, noneValue) {
+         | (None, None) =>
+           switch (opts->Belt.Array.get(0)) {
+           | Some((optId, _)) => ok(optId)
+           | None =>
+             Js.Exn.raiseError("Impossible Branch - There is always at least one option by this point")
+           }
+         | (None, Some(value)) => ok(value)
+         | (Some(value), _) =>
+           HM.find(
+             ~notFound=
+               Some(
+                 format(
+                   "The defaultValue '%s' was not found in the options for Select Input '%s'",
+                   value,
+                   guid,
+                 ),
+               ),
+             options.lookup,
+             value,
+           )
+           |> kC(_ => ok(value))
+         };
+       initialValue
+       |> kC(_ =>
+            ok({
+              guid,
+              displayMethod: Basic,
+              options,
+              noneValue,
+              currentValue: initialValue |> R.unwrap,
+              defaultValue,
+              initialValue: initialValue |> R.unwrap,
+            })
+          );
+     });
 };
 
 /** How we display the current value. When we change to filter, this can become a text box */
@@ -69,7 +147,7 @@ module Menu = {
       options
       |> Array.map(opt => {
            let isSelected = opt.value == selected.value ? [%tw "selected"] : "";
-           <li rel="0" className=isSelected>
+           <li rel="0" className=isSelected key={opt.value}>
              <div className="">
                <span className=[%tw "text"] />
                <i className=[%tw "glyphicon check-mark"] />
@@ -86,41 +164,44 @@ module Menu = {
 };
 
 [@react.component]
-let make = (~field, ~dispatch) => {
-  Js.log(dispatch);
+let make = (~conf, ~dispatch) => {
+  Js.log("Rendering Select: " ++ conf.guid);
+  let _ = dispatch;
   let opts =
-    field.options
+    conf.options
     |> Options.getOptions
-    |> Array.map(opt => <option value={opt.value}> opt.display->ReasonReact.string </option>)
+    |> Array.map(opt =>
+         <option value={opt.value} key={opt.value}> opt.display->ReasonReact.string </option>
+       )
     |> ReasonReact.array;
 
   let selected =
-    (
-      switch (field.currentValue, field.defaultValue) {
-      | (Some(current), _) => current
-      | (_, Some(default)) => default
-      | _ =>
-        Js.Exn.raiseTypeError("Tried to render a select box without either a current value or a default")
-      }
-    )
-    |> (
-      value =>
-        HM.find(
-          ~notFound=Some(format("Could not find selected value '%s' in possible options", value)),
-          field.options.lookup,
-          value,
-        )
-        |> getExn
-    );
+    conf.currentValue
+    |> HM.find(
+         ~notFound=
+           Some(format("Could not find selected value '%s' in possible options", conf.currentValue)),
+         conf.options.lookup,
+       )
+    |> getExn;
 
-  <div className=[%tw "col-md-6 col-xs-12"]>
-    <select className=[%tw "form-control"] style={ReactDOMRe.Style.make(~display="none", ())}>
-      opts
-    </select>
-    <div className=[%tw "btn-group bootstrap-select form-control"]>
-      <Selected selected />
-      <Menu selected options={field.options |> Options.getOptions} />
+  switch (conf.displayMethod) {
+  | Basic =>
+    <div className=[%tw "form-group"] key={conf.guid}>
+      <select className=[%tw "form-control"]> opts </select>
     </div>
-    <span className=[%tw "help-block"]> "Select box example"->ReasonReact.string </span>
-  </div>;
+  | Button =>
+    <div className=[%tw "form-group"] key={conf.guid}>
+      <select className=[%tw "form-control"] style={ReactDOMRe.Style.make(~display="none", ())}>
+        opts
+      </select>
+      <div className=[%tw "btn-group bootstrap-select form-control"]>
+        <Selected selected />
+        <Menu selected options={conf.options |> Options.getOptions} />
+      </div>
+    </div>
+  | _ =>
+    <div className=[%tw "form-group"] key={conf.guid}>
+      <select className=[%tw "form-control"]> opts </select>
+    </div>
+  };
 };

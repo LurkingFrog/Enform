@@ -12,8 +12,9 @@
   "license": "MIT",
   "scripts": {
     "doc": "esy dune build @doc",
+    "tailwind": "TW=$(pwd)/src/assets/css/tailwind.css bsb -make-world -- --verbose $TW",
     "build": "bsb -make-world",
-    "start": "bsb -make-world -w < /dev/zero",
+    "start": "npm run tailwind && bsb -make-world -w < /dev/zero",
     "clean": "bsb -clean-world",
     "webpack": "webpack -w",
     "webpack:production": "NODE_ENV=production webpack",

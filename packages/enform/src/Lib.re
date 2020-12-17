@@ -7,7 +7,6 @@
  * immutable coding.
  *
  */
-// open Eeyore;
 open Helpers;
 
 let newForm = Form.newForm;
@@ -33,6 +32,56 @@ let upsertMembers = (form: Form.t) => {
 };
 
 // Group Management
+let getGroup = Form.getGroup;
+
+let addGroup = (form: Form.t, newGroup: Group.t): Result.t(Form.t) => {
+  // Get the root group
+  let getRoot = () => getGroup(form, rootGroupId);
+
+  // Add the new group to the form members
+  let insertGroup = (root: Group.t, form: Form.t) => {
+    HM.insert(
+      ~dupError=
+        Some(
+          format(
+            "Could not add group '%s' to form '%s' because it already exists",
+            newGroup.guid,
+            form.guid,
+          ),
+        ),
+      newGroup.guid,
+      Form.Member.Group(newGroup),
+      form.members,
+    )
+    |> kC(formMembers => ok((root, {...form, members: formMembers})));
+  };
+
+  // Update the root group membership
+  let updateRootGroup = (root: Group.t, form: Form.t) => {
+    // Filter out the members included in the group from the root
+    let filtered = A.filterValues(root.memberIds, newGroup.memberIds);
+    Belt.HashMap.String.set(
+      form.members,
+      root.guid,
+      Form.Member.Group({...root, memberIds: A.append(filtered, newGroup.guid)}),
+    );
+    ok(form);
+  };
+
+  // let updateMembership = ();
+
+  // Get the root
+  // get and update each member with the group as a parent
+  let root = getGroup(form, rootGroupId);
+  // let members = root |> kC();
+
+  // getMembers
+  Form.verifyMembers(form, newGroup.memberIds)
+  |> kC(_ => getRoot())
+  |> kC(root => insertGroup(root, form))
+  |> kC(((root: Group.t, form: Form.t)) => updateRootGroup(root, form));
+};
+
 /** Create and add a new Selector group to a form
  *
  * NOTE: This API is assuming that we are creating the whole form in one spot, so we pass in full members
@@ -101,71 +150,40 @@ module AddSelectorGroup = {
          let parent = R.unwrap(parent);
          let selector = R.unwrap(selector);
          let members = [|selector|];
+         let newGroup = makeGroup(~parent, ~selector, ~members, guid);
 
-         makeGroup(~parent, ~selector, ~members, guid)
-         |> kC(newGroup => ok({form, root, members, parent, newGroup}));
+         Js.log("Adding the selector group to root");
+         newGroup
+         |> kC(Form.addGroup(form))
+         |> kC((form: Form.t) => {ok({form, root, members, parent, newGroup: newGroup |> R.unwrap})});
        });
   };
 
   // Remove mentions of the root group from the members
-  let updateMembership = (groupMap, params) => {
-    Js.log(groupMap);
-    ok(params);
+  let buildGroupMap = (groupMap: array((string, array(string))), params) => {
+    groupMap
+    |> Array.fold_left(
+         (acc, (groupName, groupMemberIds)) => {
+           acc
+           |> kC(form =>
+                Group.newSimpleGroup(~parentId=params.newGroup.guid, groupName)
+                |> kC(Form.addGroup(form))
+                |> kC(Form.addMembersToGroup(groupMemberIds, groupName))
+              )
+         },
+         ok(params.form),
+       )
+    |> kC(form => ok({...params, form}));
   };
 };
 
 let addSelectorGroup = (~groupMap=[||], ~parentId=rootGroupId, ~selectorId, guid, form) => {
-  // Get the parent from the form
-  // Get the selector
-  // Create new group with selector as label
-  // Build sub-groups (Simple/Validation) from group map
+  Js.log("Called addSelectorGroup");
   //   - Get each item from form
   // Wire selector OnChange to modify visible groups
   AddSelectorGroup.
-    (initParams(~parentId, ~form, ~guid, ~selectorId) |> kC(updateMembership(groupMap)) |> kC(getForm));
-    // |> kC(update)
-};
-
-let getGroup = Form.getGroup;
-
-let addGroup = (form: Form.t, newGroup: Group.t): Result.t(Form.t) => {
-  // Get the root group
-  let getRoot = () => getGroup(form, rootGroupId);
-
-  // Add the new group to the form members
-  let insertGroup = (root: Group.t, form: Form.t) => {
-    HM.insert(
-      ~dupError=
-        Some(
-          format(
-            "Could not add group '%s' to form '%s' because it already exists",
-            newGroup.guid,
-            form.guid,
-          ),
-        ),
-      newGroup.guid,
-      Form.Member.Group(newGroup),
-      form.members,
-    )
-    |> kC(formMembers => ok((root, {...form, members: formMembers})));
-  };
-
-  // Update the root group membership
-  let updateRootGroup = (root: Group.t, form: Form.t) => {
-    // Filter out the members included in the group from the root
-    let filtered = A.filterValues(root.memberIds, newGroup.memberIds);
-    Belt.HashMap.String.set(
-      form.members,
-      root.guid,
-      Form.Member.Group({...root, memberIds: A.append(filtered, newGroup.guid)}),
-    );
-    ok(form);
-  };
-
-  Form.verifyMembers(form, newGroup.memberIds)
-  |> kC(_ => getRoot())
-  |> kC(root => insertGroup(root, form))
-  |> kC(((root: Group.t, form: Form.t)) => updateRootGroup(root, form));
+    // Create a new group and validate the parent of the form
+    (initParams(~parentId, ~form, ~guid, ~selectorId) |> kC(buildGroupMap(groupMap)) |> kC(getForm));
 };
 
 // // Field Management

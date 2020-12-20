@@ -126,6 +126,15 @@ let newSelectInput = (~defaultValue=?, ~noneValue=?, ~_valueFilter=?, opts, guid
      });
 };
 
+let getOption = (selector, optionId) => {
+  optionId
+  |> HM.find(
+       ~notFound=
+         Some(format("Select Field '%s' does not have an option with key '%s'", selector.guid, optionId)),
+       selector.options.lookup,
+     );
+};
+
 /** How we display the current value. When we change to filter, this can become a text box */
 module Selected = {
   [@react.component]

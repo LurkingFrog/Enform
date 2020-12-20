@@ -451,6 +451,56 @@ let rec renderMember = (form, dispatch, memberId) => {
   };
 };
 
+/** Bind a simple group Id to be displayed when the option Id is selected
+ *
+ * By default, the optionId is the same guid as the subgroup Id
+ * THINK: This should be in the group level, but no validation can happen deeper than the form level.
+ *        Curry the form into the group functions?
+ *
+ * @ param subgroupId The guid of th sub-group that should be displayed when its option is selected
+ * @ param selectorGroupId The value (not display) of the option that should trigger given subgroup to appear
+ * @ param form The form that manages both the group and subgroup
+*/
+let addSelectorMapping = (~optionId=?, subgroupId, selectorGroupId, form) => {
+  selectorGroupId
+  |> getGroup(form)
+  |> kC((group: Group.t) =>
+       switch (group.groupType) {
+       | Selector(groupConf) =>
+         // make sure the subgroup is in the member Ids
+         subgroupId
+         |> A.hasStr(
+              ~notFoundMsg=
+                format("subgroup '%s' is not a member of selector group '%s'", subgroupId, group.guid),
+              group.memberIds,
+            )
+         |> kC(_ => subgroupId |> getMember(form))
+         // TODO: Change this to getMember so we can use simple groups as well as a select box
+         |> kC(_ => groupConf.selectorId |> getField(form))
+         |> kC((selector: Field.t) =>
+              switch (selector.fieldType) {
+              | Select(selectConf) =>
+                optionId
+                |> O.getOr(subgroupId)
+                |> Select.getOption(selectConf)
+                |> kC((opt: Select.selectOption) => HM.insert(opt.value, subgroupId, groupConf.groupMap))
+                |> kC(groupMap =>
+                     ok(Member.Group({...group, groupType: Selector({...groupConf, groupMap})}))
+                   )
+                |> kC(setMember(form))
+              | _ =>
+                err(
+                  ~msg=format("Group '%s' does not have a Select field as a selector", group.guid),
+                  Errors.BadValue,
+                )
+              }
+            )
+
+       | _ => err(~msg="Tried to add an option mapping on a non-selector group", Errors.BadValue)
+       }
+     );
+};
+
 /** A quick renderer of an entire form
   *
   * This returns a full panel with the configured layout.

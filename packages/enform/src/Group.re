@@ -103,6 +103,7 @@ let make = (~group, ~dispatch, ~renderer) => {
   | Selector(conf) =>
     Js.log("-- Rendering the Selector");
     let selector = conf.selectorId |> renderer;
+    // Render all the subgroups, with only the selected one being visible
     let groups =
       conf.groupMap
       |> Belt.HashMap.String.toArray
@@ -112,7 +113,7 @@ let make = (~group, ~dispatch, ~renderer) => {
            <div id=subGroupId key=subGroupId> members </div>;
          })
       |> ReasonReact.array;
-
+    Js.log(conf);
     Js.log("After");
     <div className=[%tw "form-group"] key={group.guid}>
       selector

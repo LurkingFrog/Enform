@@ -152,7 +152,6 @@ module AddSelectorGroup = {
          let members = [|selector|];
          let newGroup = makeGroup(~parent, ~selector, ~members, guid);
 
-         Js.log("Adding the selector group to root");
          newGroup
          |> kC(Form.addGroup(form))
          |> kC((form: Form.t) => {ok({form, root, members, parent, newGroup: newGroup |> R.unwrap})});
@@ -165,25 +164,23 @@ module AddSelectorGroup = {
     |> Array.fold_left(
          (acc, (groupName, groupMemberIds)) => {
            acc
-           |> kC(form =>
+           |> kC(params =>
                 Group.newSimpleGroup(~parentId=params.newGroup.guid, groupName)
-                |> kC(Form.addGroup(form))
+                |> kC(Form.addGroup(params.form))
                 |> kC(Form.addMembersToGroup(groupMemberIds, groupName))
+                |> kC(Form.addSelectorMapping(groupName, params.newGroup.guid))
+                |> kC(form => ok({...params, form}))
               )
          },
-         ok(params.form),
-       )
-    |> kC(form => ok({...params, form}));
+         ok(params),
+       );
   };
 };
 
 let addSelectorGroup = (~groupMap=[||], ~parentId=rootGroupId, ~selectorId, guid, form) => {
-  Js.log("Called addSelectorGroup");
-  //   - Get each item from form
-  // Wire selector OnChange to modify visible groups
-  AddSelectorGroup.
-    // Create a new group and validate the parent of the form
-    (initParams(~parentId, ~form, ~guid, ~selectorId) |> kC(buildGroupMap(groupMap)) |> kC(getForm));
+  AddSelectorGroup.(
+    initParams(~parentId, ~form, ~guid, ~selectorId) |> kC(buildGroupMap(groupMap)) |> kC(getForm)
+  );
 };
 
 // // Field Management

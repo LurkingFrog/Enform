@@ -8,6 +8,7 @@
  *
  * TODO:
  * - Convert to ReScript if moved to a separate module
+ * - Move this all into Eeyo, as the primary function of this module is to ROP enable Belt
  */;
 
 // -- Library Constants --
@@ -113,6 +114,24 @@ module R = {
     switch (result) {
     | Ok(x) => Ok([|x|])
     | Error(x) => Error(x)
+    };
+};
+
+/** Belt.Option wrappers */
+module O = {
+  /** Alias for Belt.Option.getWithDefault */
+  let getOr = (opt, default) => opt |> Belt.Option.getWithDefault(default);
+
+  /** map a function to the value if the option contains a value, or return an error
+   *
+   * The default function is option('a) => Ok('a)
+  */
+  let mapSome =
+      (~errMsg="Received a None value when Some was expected", ~errType="Errors.IsNone", ~func=?, value) =>
+    switch (value, func) {
+    | (Some(value), None) => ok(value)
+    | (Some(value), Some(func)) => value |> func
+    | (None, _) => err(~msg=errMsg, errType)
     };
 };
 
@@ -258,15 +277,29 @@ module HM = {
          NotFound,
        );
   };
+  let has = (~notFound=None, hashMap, key) =>
+    switch (Belt.HashMap.String.get(hashMap, key)) {
+    | Some(_) => uOk()
+    | None =>
+      err(
+        ~msg=
+          notFound->Belt.Option.getWithDefault(
+            format("HashMap does not contain an item with key '%s'", key),
+          ),
+        ~level=
+          switch (notFound) {
+          | Some(_) => Err
+          | None => Panic
+          },
+        Errors.NotFound,
+      )
+    };
 
   /** Uniquely insert a new item with key and raise a duplicate key error if it already exists */
   let insert = (~dupError=None, key, item, hashMap) => {
     Belt.HashMap.String.get(hashMap, key)
     |> mapSome(
-         ~msg=
-           dupError->Belt.Option.getWithDefault(
-             format("Item with key '%s' already exists in the hash map", key),
-           ),
+         ~msg=dupError |> O.getOr(format("Item with key '%s' already exists in the hash map", key)),
          ~level=
            switch (dupError) {
            | Some(_) => Err
@@ -305,24 +338,6 @@ module HM = {
          [||],
        )
     |> A.flattenExn(~groupErrorMsg=Some(keysNotFoundMsg));
-};
-
-/** Belt.Option wrappers */
-module O = {
-  /** Alias for Belt.Option.getWithDefault */
-  let getOr = (opt, default) => opt |> Belt.Option.getWithDefault(default);
-
-  /** map a function to the value if the option contains a value, or return an error
-   *
-   * The default function is option('a) => Ok('a)
-  */
-  let mapSome =
-      (~errMsg="Received a None value when Some was expected", ~errType="Errors.IsNone", ~func=?, value) =>
-    switch (value, func) {
-    | (Some(value), None) => ok(value)
-    | (Some(value), Some(func)) => value |> func
-    | (None, _) => err(~msg=errMsg, errType)
-    };
 };
 
 /** Get the last value in an array
